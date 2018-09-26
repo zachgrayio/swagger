@@ -40,7 +40,7 @@ export class SwaggerModule {
 
     const httpServer = app.getHttpServer();
     if (httpServer instanceof FastifyAdapter) {
-      return this.setupFastify(path, httpServer, document);
+      return this.setupFastify(path, httpServer, document, options);
     }
     const finalPath = validatePath(path);
 
@@ -53,7 +53,8 @@ export class SwaggerModule {
   private static setupFastify(
     path: string,
     httpServer: FastifyAdapter,
-    document: SwaggerDocument
+    document: SwaggerDocument,
+    options: SwaggerCustomOptions
   ) {
     httpServer.register(loadPackage('fastify-swagger', 'SwaggerModule'), {
       swagger: document,
@@ -64,5 +65,27 @@ export class SwaggerModule {
         document
       }
     });
+    if (options) {
+      const validate = this.authValidator(options);
+      httpServer.register(loadPackage('fastify-basic-auth', 'SwaggerModule'), {
+        validate,
+        authenticate: true,
+        disableHook: true
+      });
+      httpServer.after(() => {
+        httpServer.addHook('preHandler', httpServer.basicAuth);
+      });
+    }
+  }
+
+  static authValidator(options: SwaggerCustomOptions) {
+    return async (username: string, password: string) => {
+      if (
+        username !== options.uiBasicAuthOptions.username ||
+        password !== options.uiBasicAuthOptions.password
+      ) {
+        return new Error('Invalid Credentials.');
+      }
+    };
   }
 }
