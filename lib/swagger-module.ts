@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { loadPackage } from '@nestjs/common/utils/load-package.util';
 import { FastifyAdapter } from '@nestjs/core';
 import * as swaggerUi from 'swagger-ui-express';
+import * as basicAuth from 'express-basic-auth';
 import {
   SwaggerBaseConfig,
   SwaggerCustomOptions,
@@ -44,6 +45,16 @@ export class SwaggerModule {
     }
     const finalPath = validatePath(path);
 
+    if (options && options.uiBasicAuthOptions) {
+      const username = options.uiBasicAuthOptions.username;
+      const password = options.uiBasicAuthOptions.password;
+      const basicAuthOptions = {
+        users: {},
+        challenge: true
+      };
+      basicAuthOptions.users[username] = password;
+      app.use(finalPath, basicAuth(basicAuthOptions));
+    }
     const swaggerHtml = swaggerUi.generateHTML(document, options);
     app.use(finalPath, swaggerUi.serveFiles(document, options));
     app.use(finalPath, (req, res) => res.send(swaggerHtml));
@@ -56,6 +67,18 @@ export class SwaggerModule {
     document: SwaggerDocument,
     options: SwaggerCustomOptions
   ) {
+    if (options && options.uiBasicAuthOptions) {
+      const validate = this.authValidator(options);
+      httpServer.register(loadPackage('fastify-basic-auth', 'SwaggerModule'), {
+        validate,
+        authenticate: true
+      });
+      httpServer.getInstance().after(() => {
+        httpServer
+          .getInstance()
+          .addHook('preHandler', httpServer.getInstance().basicAuth);
+      });
+    }
     httpServer.register(loadPackage('fastify-swagger', 'SwaggerModule'), {
       swagger: document,
       exposeRoute: true,
@@ -65,17 +88,6 @@ export class SwaggerModule {
         document
       }
     });
-    if (options) {
-      const validate = this.authValidator(options);
-      httpServer.register(loadPackage('fastify-basic-auth', 'SwaggerModule'), {
-        validate,
-        authenticate: true,
-        disableHook: true
-      });
-      httpServer.after(() => {
-        httpServer.addHook('preHandler', httpServer.basicAuth);
-      });
-    }
   }
 
   static authValidator(options: SwaggerCustomOptions) {
